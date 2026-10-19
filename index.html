@@ -1,5 +1,10 @@
 <!doctype html>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0; url=iphone/">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SkyScope</title>
-<a href="iphone/">Open SkyScope</a>
+<style>body{background:#05080F;margin:0}</style>
+<script>
+  // A fresh query string on every open skips GitHub's 10-minute cache, so the latest version always loads.
+  location.replace("iphone/?v=" + Date.now());
+</script>
+<noscript><a href="iphone/">Open SkyScope</a></noscript>
