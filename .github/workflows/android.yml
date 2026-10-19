@@ -13,9 +13,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -26,7 +26,17 @@ jobs:
 
       - name: Build installable APK
         working-directory: android
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon 2>&1 | tee build.log
+
+      - name: Show build errors
+        if: failure()
+        working-directory: android
+        run: |
+          # Put the compiler errors in one annotation so they are readable without the full log.
+          msg=$(grep -E '^e: |error:|What went wrong|^> ' -A3 build.log | head -80 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Build errors::${msg}"
 
       - name: Publish to the "android-latest" download link
         env:

@@ -3,6 +3,7 @@ package com.skyscope.app
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,11 +43,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -58,19 +62,25 @@ import kotlin.math.sin
 
 // ---------- Colors & theme ----------
 
+// Same high-tech palette as the iPhone version: near-black navy, glass cards, cyan accent.
 object Sky {
-    val Bg = Color(0xFF0B1020)
-    val Card = Color(0xFF141B2E)
-    val CardHi = Color(0xFF1C2540)
-    val Line = Color(0xFF2A3554)
-    val Text = Color(0xFFE6EAF5)
-    val Muted = Color(0xFF8A94B0)
-    val Accent = Color(0xFF5EC8F2)
+    val Bg = Color(0xFF05080F)
+    val Bg2 = Color(0xFF0A1222)
+    val Card = Color(0xFF101C30)
+    val CardHi = Color(0xFF16263F)
+    val Line = Color(0x2978AAE6)
+    val Text = Color(0xFFE6F1FF)
+    val Muted = Color(0xFF7F93B2)
+    val Accent = Color(0xFF22D3EE)
+    val Accent2 = Color(0xFF818CF8)
     val Good = Color(0xFF34D399)
-    val Fair = Color(0xFFFBBF24)
+    val Fair = Color(0xFFFACC15)
     val Bad = Color(0xFFF87171)
-    val Off = Color(0xFF4B5675)
+    val Off = Color(0xFF3B4A66)
 }
+
+private val Mono = FontFamily.Monospace
+private val ScreenBg = Brush.verticalGradient(listOf(Color(0xFF0B1A2C), Sky.Bg, Sky.Bg2))
 
 fun cn0Color(cn0: Float): Color = when {
     cn0 <= 0f -> Sky.Off
@@ -114,13 +124,13 @@ fun PermissionScreen(onGrant: () -> Unit, onOpenAppSettings: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(Sky.Bg)
+            .background(ScreenBg)
             .systemBarsPadding()
             .padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("SkyScope", color = Sky.Text, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+        Logo(32.sp)
         Spacer(Modifier.height(12.dp))
         Text(
             "Measures how well your phone hears positioning satellites (GPS, Galileo, GLONASS, BeiDou) where you're standing, and tells you how to get a better signal.",
@@ -135,13 +145,13 @@ fun PermissionScreen(onGrant: () -> Unit, onOpenAppSettings: () -> Unit) {
         Button(
             onClick = onGrant,
             colors = ButtonDefaults.buttonColors(containerColor = Sky.Accent, contentColor = Sky.Bg),
-        ) { Text("Allow location") }
+        ) { Text("Allow location", fontWeight = FontWeight.SemiBold) }
         TextButton(onClick = onOpenAppSettings) { Text("Open app settings", color = Sky.Muted) }
     }
 }
 
 @Composable
-fun MainScreen(snapshot: GnssSnapshot, onOpenLocationSettings: () -> Unit) {
+fun MainScreen(snapshot: GnssSnapshot, trail: SignalTrail, onOpenLocationSettings: () -> Unit) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -151,11 +161,23 @@ fun MainScreen(snapshot: GnssSnapshot, onOpenLocationSettings: () -> Unit) {
     }
     val a = remember(snapshot, now) { analyze(snapshot, now) }
     var showAll by remember { mutableStateOf(false) }
+    var trailVersion by remember { mutableIntStateOf(0) }
+
+    // Every new satellite fix adds a point to the map, colored by the satellite score at that moment.
+    LaunchedEffect(snapshot.lastFixAt) {
+        val lat = snapshot.lat
+        val lon = snapshot.lon
+        val acc = snapshot.accuracyM
+        if (snapshot.lastFixAt != null && lat != null && lon != null && acc != null && acc < 100f) {
+            val score = analyze(snapshot, System.currentTimeMillis()).score
+            if (trail.add(TrailPoint(lat, lon, score, System.currentTimeMillis()))) trailVersion++
+        }
+    }
 
     Column(
         Modifier
             .fillMaxSize()
-            .background(Sky.Bg)
+            .background(ScreenBg)
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -165,6 +187,14 @@ fun MainScreen(snapshot: GnssSnapshot, onOpenLocationSettings: () -> Unit) {
         ScoreCard(a)
         StatsRow(a)
         if (!snapshot.gpsEnabled) LocationOffCard(onOpenLocationSettings)
+        SignalMapCard(
+            trail = trail.points.toList(),
+            trailVersion = trailVersion,
+            lat = snapshot.lat,
+            lon = snapshot.lon,
+            accuracyM = snapshot.accuracyM,
+            onClear = { trail.clear(); trailVersion++ },
+        )
         RecommendationsCard(a.recommendations)
         SkyPlotCard(snapshot.sats)
         SatelliteListCard(snapshot.sats, showAll) { showAll = !showAll }
@@ -179,7 +209,7 @@ fun MainScreen(snapshot: GnssSnapshot, onOpenLocationSettings: () -> Unit) {
 // ---------- Building blocks ----------
 
 @Composable
-private fun Panel(
+internal fun Panel(
     title: String? = null,
     subtitle: String? = null,
     content: @Composable ColumnScope.() -> Unit,
@@ -187,15 +217,26 @@ private fun Panel(
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Sky.Card)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Brush.verticalGradient(listOf(Sky.CardHi, Sky.Card)))
+            .border(1.dp, Sky.Line, RoundedCornerShape(18.dp))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (title != null) {
             Column {
-                Text(title, color = Sky.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                if (subtitle != null) Text(subtitle, color = Sky.Muted, fontSize = 12.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(14.dp).height(2.dp).background(Sky.Accent))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        title.uppercase(), color = Sky.Accent, fontSize = 11.sp, fontFamily = Mono,
+                        fontWeight = FontWeight.SemiBold, letterSpacing = 2.sp,
+                    )
+                }
+                if (subtitle != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(subtitle, color = Sky.Muted, fontSize = 13.sp)
+                }
             }
         }
         content()
@@ -205,19 +246,23 @@ private fun Panel(
 @Composable
 private fun Header(a: Assessment) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("SkyScope", color = Sky.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Logo(20.sp)
         Spacer(Modifier.weight(1f))
         val c = severityColor(a.statusSeverity)
         Row(
             Modifier
                 .clip(RoundedCornerShape(50))
-                .background(c.copy(alpha = 0.15f))
+                .background(c.copy(alpha = 0.10f))
+                .border(1.dp, c.copy(alpha = 0.4f), RoundedCornerShape(50))
                 .padding(horizontal = 10.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.size(8.dp).clip(CircleShape).background(c))
             Spacer(Modifier.width(6.dp))
-            Text(a.status, color = c, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(
+                a.status.uppercase(), color = c, fontSize = 11.sp, fontFamily = Mono,
+                fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp,
+            )
         }
     }
 }
@@ -239,6 +284,11 @@ private fun ScoreCard(a: Assessment) {
                     )
                     if (sweep > 0f) {
                         drawArc(
+                            color.copy(alpha = 0.25f), -90f, 360f * sweep, false,
+                            topLeft = Offset(inset, inset), size = arcSize,
+                            style = Stroke(stroke * 2.2f, cap = StrokeCap.Round),
+                        )
+                        drawArc(
                             color, -90f, 360f * sweep, false,
                             topLeft = Offset(inset, inset), size = arcSize,
                             style = Stroke(stroke, cap = StrokeCap.Round),
@@ -246,15 +296,15 @@ private fun ScoreCard(a: Assessment) {
                     }
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${a.score}", color = Sky.Text, fontSize = 34.sp, fontWeight = FontWeight.Bold)
-                    Text("/ 100", color = Sky.Muted, fontSize = 12.sp)
+                    Text("${a.score}", color = Sky.Text, fontSize = 36.sp, fontWeight = FontWeight.Bold, fontFamily = Mono)
+                    Text("SIGNAL", color = Sky.Muted, fontSize = 10.sp, fontFamily = Mono, letterSpacing = 2.sp)
                 }
             }
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    a.level.label.uppercase(), color = color, fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
+                    a.level.label.uppercase(), color = color, fontSize = 13.sp, fontFamily = Mono,
+                    fontWeight = FontWeight.Bold, letterSpacing = 3.sp,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(a.headline, color = Sky.Text, fontSize = 15.sp)
@@ -279,12 +329,13 @@ private fun StatTile(label: String, value: String, unit: String, modifier: Modif
         modifier
             .clip(RoundedCornerShape(14.dp))
             .background(Sky.Card)
+            .border(1.dp, Sky.Line, RoundedCornerShape(14.dp))
             .padding(vertical = 12.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(label, color = Sky.Muted, fontSize = 11.sp)
-        Text(value, color = Sky.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-        Text(unit, color = Sky.Muted, fontSize = 10.sp)
+        Text(label.uppercase(), color = Sky.Muted, fontSize = 9.sp, fontFamily = Mono, letterSpacing = 1.sp, maxLines = 1)
+        Text(value, color = Sky.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, maxLines = 1)
+        Text(unit.uppercase(), color = Sky.Muted, fontSize = 9.sp, fontFamily = Mono, letterSpacing = 1.sp, maxLines = 1)
     }
 }
 
@@ -384,7 +435,7 @@ private fun SkyPlotCard(sats: List<Sat>) {
 }
 
 @Composable
-private fun LegendItem(color: Color, label: String) {
+internal fun LegendItem(color: Color, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(10.dp).clip(CircleShape).background(color))
         Spacer(Modifier.width(6.dp))
@@ -440,5 +491,13 @@ private fun SatRow(s: Sat) {
             if (s.usedInFix) "✓" else "", color = Sky.Good, fontSize = 13.sp,
             textAlign = TextAlign.Center, modifier = Modifier.width(20.dp),
         )
+    }
+}
+
+@Composable
+private fun Logo(size: androidx.compose.ui.unit.TextUnit) {
+    Row {
+        Text("SKY", color = Sky.Text, fontSize = size, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+        Text("SCOPE", color = Sky.Accent, fontSize = size, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
     }
 }

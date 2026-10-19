@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 class MainActivity : ComponentActivity() {
 
     private lateinit var tracker: GnssTracker
+    private lateinit var trail: SignalTrail
     private var hasPermission by mutableStateOf(false)
 
     private val permissionLauncher =
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         tracker = GnssTracker(applicationContext)
+        trail = SignalTrail(applicationContext)
         hasPermission = isFineLocationGranted()
 
         setContent {
@@ -43,6 +45,7 @@ class MainActivity : ComponentActivity() {
                     val snapshot by tracker.state.collectAsState()
                     MainScreen(
                         snapshot = snapshot,
+                        trail = trail,
                         onOpenLocationSettings = {
                             startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                         },

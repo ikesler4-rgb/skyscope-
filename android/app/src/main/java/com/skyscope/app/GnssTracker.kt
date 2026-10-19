@@ -29,6 +29,8 @@ data class Sat(
 data class GnssSnapshot(
     val sats: List<Sat> = emptyList(),
     val accuracyM: Float? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
     val lastFixAt: Long? = null,
     val gpsEnabled: Boolean = true,
     val startedAt: Long = System.currentTimeMillis(),
@@ -72,6 +74,8 @@ class GnssTracker(context: Context) {
             _state.update {
                 it.copy(
                     accuracyM = if (location.hasAccuracy()) location.accuracy else null,
+                    lat = location.latitude,
+                    lon = location.longitude,
                     lastFixAt = System.currentTimeMillis(),
                 )
             }
