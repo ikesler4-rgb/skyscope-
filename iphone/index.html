@@ -142,6 +142,9 @@ header h1 span { color: var(--accent); }
 .leaflet-container { font: 12px var(--font-ui); }
 .leaflet-control-attribution { background: rgba(5, 8, 15, 0.7) !important; color: var(--muted) !important; }
 .leaflet-control-attribution a { color: var(--muted) !important; }
+.styles { position: absolute; top: 10px; right: 10px; z-index: 500; display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.styles button { border-radius: 0; border: 0; background: rgba(10, 18, 34, 0.9); color: var(--muted); padding: 8px 12px; font: 600 11px var(--font-num); letter-spacing: .08em; text-transform: uppercase; }
+.styles button.on { color: var(--accent-ink); background: var(--accent); }
 .leaflet-bar a { background: rgba(10, 18, 34, 0.9) !important; color: var(--ink) !important; border-color: var(--line) !important; }
 .me-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; box-shadow: 0 0 0 0 rgba(34, 211, 238, .7); animation: pulse 2s infinite; }
 @keyframes pulse { 70% { box-shadow: 0 0 0 14px rgba(34, 211, 238, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); } }
@@ -286,6 +289,7 @@ ol.steps li + li { margin-top: 4px; }
       </div>
       <div style="position:relative">
         <div id="map"></div>
+        <div class="styles"><button type="button" data-style="satellite" class="on">Satellite</button><button type="button" data-style="terrain">Terrain</button></div>
         <button class="chip-btn recenter" id="recenterBtn" type="button" hidden>Center on me</button>
       </div>
       <p class="map-msg" id="mapMsg" hidden>The map needs an internet connection to load. Your readings are still being recorded.</p>
@@ -591,10 +595,22 @@ ol.steps li + li { margin-top: 4px; }
       return;
     }
     MAP.map = L.map("map", { zoomControl: true, attributionControl: true }).setView([46.0, 8.0], 3);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      maxZoom: 20, subdomains: "abcd",
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }).addTo(MAP.map);
+    // Free map styles that need no account or key: satellite photos (default) and a terrain map with slopes and contour lines.
+    const satellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 19, maxNativeZoom: 18,
+      attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics",
+    });
+    const terrain = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, maxNativeZoom: 17, subdomains: "abc",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="https://opentopomap.org">OpenTopoMap</a>',
+    });
+    satellite.addTo(MAP.map);
+    const styles = { satellite, terrain };
+    document.querySelectorAll("[data-style]").forEach((b) => b.addEventListener("click", () => {
+      Object.values(styles).forEach((l) => MAP.map.removeLayer(l));
+      styles[b.dataset.style].addTo(MAP.map);
+      document.querySelectorAll("[data-style]").forEach((o) => o.classList.toggle("on", o === b));
+    }));
     MAP.layer = L.layerGroup().addTo(MAP.map);
     MAP.map.on("dragstart", () => { MAP.follow = false; $("recenterBtn").hidden = false; });
     trail.forEach(addTrailDot);
