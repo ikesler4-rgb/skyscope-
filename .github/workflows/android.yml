@@ -1,0 +1,40 @@
+name: Build Android app
+
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Build installable APK
+        working-directory: android
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Publish to the "android-latest" download link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk SkyScope.apk
+          if ! gh release view android-latest >/dev/null 2>&1; then
+            gh release create android-latest --title "SkyScope for Android (latest)" \
+              --notes "Download SkyScope.apk on an Android phone and open it to install. This file is replaced automatically with every update." --prerelease
+          fi
+          gh release upload android-latest SkyScope.apk --clobber
